@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FIFO учет цветочного магазина</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Цветочный магазин</p>
+          <h1>Закупка пачками, FIFO-продажи и учет мертвых цветов</h1>
+        </div>
+        <div class="hero-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <b></b>
+        </div>
+      </section>
+
+      <section class="stats-grid" aria-label="Финансовые показатели">
+        <article class="stat">
+          <span>Живой остаток</span>
+          <strong id="totalUnits">0 шт.</strong>
+        </article>
+        <article class="stat">
+          <span>Себестоимость склада</span>
+          <strong id="stockCost">0 ₸</strong>
+        </article>
+        <article class="stat">
+          <span>Выручка</span>
+          <strong id="revenue">0 ₸</strong>
+        </article>
+        <article class="stat loss">
+          <span>Потери от мертвых</span>
+          <strong id="deadLoss">0 ₸</strong>
+        </article>
+        <article class="stat accent">
+          <span>Чистая прибыль</span>
+          <strong id="profit">0 ₸</strong>
+        </article>
+      </section>
+
+      <section class="workspace three">
+        <form id="batchForm" class="panel">
+          <div class="panel-head">
+            <h2>Закупить пачку</h2>
+            <p>Себестоимость 1 живого цветка считается автоматически.</p>
+          </div>
+          <label>
+            Название цветка
+            <input name="name" type="text" placeholder="Например, Роза Red Naomi" required>
+          </label>
+          <div class="form-grid">
+            <label>
+              Цена пачки
+              <input name="packCost" id="packCost" type="number" min="0" step="0.01" placeholder="6500" required>
+            </label>
+            <label>
+              Цветов в пачке
+              <input name="packQuantity" id="packQuantity" type="number" min="1" step="1" value="25" required>
+            </label>
+          </div>
+          <label>
+            Мертвые сразу в пачке
+            <input name="deadOnArrival" id="deadOnArrival" type="number" min="0" step="1" value="0">
+          </label>
+          <label>
+            Розничная цена за 1 шт.
+            <input name="retailPrice" id="retailPrice" type="number" min="0" step="0.01" placeholder="1000" required>
+          </label>
+          <div class="calculator">
+            <span>Живых к продаже: <strong id="livePreview">25 шт.</strong></span>
+            <span>Себестоимость 1 шт.: <strong id="unitCostPreview">260 ₸</strong></span>
+            <span>Розничная цена: <strong id="retailPreview">0 ₸</strong></span>
+            <span>Прибыль с 1 шт.: <strong id="unitProfitPreview">0 ₸</strong></span>
+          </div>
+          <button type="submit" class="primary-btn">Добавить пачку на склад</button>
+        </form>
+
+        <form id="saleForm" class="panel">
+          <div class="panel-head">
+            <h2>Продажа FIFO</h2>
+            <p>Сначала списываются самые старые живые цветы выбранного вида.</p>
+          </div>
+          <label>
+            Цветок
+            <select name="name" id="saleFlower" required></select>
+          </label>
+          <div class="form-grid">
+            <label>
+              Количество
+              <input name="quantity" type="number" min="1" step="1" value="1" required>
+            </label>
+            <div class="readonly-note">Продажа только в розницу</div>
+          </div>
+          <label>
+            Своя цена за 1 шт. необязательно
+            <input name="customPrice" type="number" min="0" step="0.01" placeholder="Если нужна скидка">
+          </label>
+          <button type="submit" class="primary-btn dark">Оформить продажу</button>
+          <p id="saleHint" class="hint"></p>
+        </form>
+
+        <form id="deadForm" class="panel">
+          <div class="panel-head">
+            <h2>Списать мертвые</h2>
+            <p>Испорченные цветы уменьшают склад и идут в потери по FIFO.</p>
+          </div>
+          <label>
+            Цветок
+            <select name="name" id="deadFlower" required></select>
+          </label>
+          <label>
+            Количество
+            <input name="quantity" type="number" min="1" step="1" value="1" required>
+          </label>
+          <label>
+            Причина
+            <input name="reason" type="text" placeholder="Например, завяли или сломались">
+          </label>
+          <button type="submit" class="primary-btn danger">Списать в потери</button>
+          <p id="deadHint" class="hint"></p>
+        </form>
+      </section>
+
+      <section class="table-section">
+        <div class="section-head">
+          <div>
+            <h2>Склад по пачкам</h2>
+            <p>Пачки отсортированы от старых к новым для FIFO.</p>
+          </div>
+          <button id="clearData" type="button" class="ghost-btn">Очистить учет</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Цветок</th>
+                <th>Живой остаток</th>
+                <th>Пачка</th>
+                <th>Мертвые</th>
+                <th>Себест. 1 шт.</th>
+                <th>Розница</th>
+                <th>Стоимость остатка</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-section">
+        <div class="section-head">
+          <div>
+            <h2>История продаж</h2>
+            <p>Видно, какая себестоимость списалась и сколько заработано.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Цветок</th>
+                <th>Кол-во</th>
+                <th>Выручка</th>
+                <th>Себестоимость</th>
+                <th>Прибыль</th>
+              </tr>
+            </thead>
+            <tbody id="salesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="table-section">
+        <div class="section-head">
+          <div>
+            <h2>Мертвые и списания</h2>
+            <p>Потери считаются по себестоимости цветов, которые списались FIFO.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Цветок</th>
+                <th>Кол-во</th>
+                <th>Потеря</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody id="writeoffsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
