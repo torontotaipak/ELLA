@@ -1,6 +1,15 @@
-const STORAGE_KEY = "flower-fifo-business-v2";
-
-const state = loadState();
+let state = {
+  batches: [],
+  sales: [],
+  writeoffs: [],
+  stats: {
+    totalUnits: 0,
+    stockCost: 0,
+    revenue: 0,
+    deadLoss: 0,
+    profit: 0
+  }
+};
 
 const batchForm = document.querySelector("#batchForm");
 const saleForm = document.querySelector("#saleForm");
@@ -32,47 +41,24 @@ const formatDate = new Intl.DateTimeFormat("ru-RU", {
 });
 
 packInputs.forEach((input) => input.addEventListener("input", renderPackPreview));
-render();
+loadState();
+renderPackPreview();
 
-batchForm.addEventListener("submit", (event) => {
+batchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(batchForm);
-  const name = cleanName(form.get("name"));
-  const packCost = toNumber(form.get("packCost"));
-  const packQuantity = toNumber(form.get("packQuantity"));
-  const deadOnArrival = Math.min(toNumber(form.get("deadOnArrival")), packQuantity);
-  const liveQuantity = packQuantity - deadOnArrival;
-  const retailPrice = toNumber(form.get("retailPrice"));
-
-  if (!name || packCost <= 0 || packQuantity <= 0 || liveQuantity <= 0 || retailPrice <= 0) return;
-
-  const unitCost = packCost / packQuantity;
-  const batch = {
-    id: createId(),
-    name,
-    packCost,
-    packQuantity,
-    deadOnArrival,
-    quantity: liveQuantity,
-    cost: unitCost,
-    retailPrice,
-    createdAt: new Date().toISOString()
+  const payload = {
+    name: cleanName(form.get("name")),
+    packCost: toNumber(form.get("packCost")),
+    packQuantity: toNumber(form.get("packQuantity")),
+    deadOnArrival: toNumber(form.get("deadOnArrival")),
+    retailPrice: toNumber(form.get("retailPrice"))
   };
 
-  state.batches.push(batch);
+  const response = await apiPost("/api/batches/", payload);
+  if (!response.ok) return showHint(saleHint, response.error || "Проверьте данные пачки.");
 
-  if (deadOnArrival > 0) {
-    state.writeoffs.unshift({
-      id: createId(),
-      name,
-      quantity: deadOnArrival,
-      cost: deadOnArrival * unitCost,
-      reason: "Мертвые сразу в пачке",
-      createdAt: new Date().toISOString()
-    });
-  }
-
-  saveState();
+  state = response.state;
   batchForm.reset();
   batchForm.packQuantity.value = 25;
   batchForm.deadOnArrival.value = 0;
@@ -81,168 +67,83 @@ batchForm.addEventListener("submit", (event) => {
   render();
 });
 
-saleForm.addEventListener("submit", (event) => {
+saleForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(saleForm);
-  const name = form.get("name");
-  const quantity = toNumber(form.get("quantity"));
-  const customPrice = form.get("customPrice");
-
-  if (!name || quantity <= 0) return;
-
-  const available = getAvailable(name);
-  if (available < quantity) {
-    showHint(saleHint, `Недостаточно на складе: доступно ${available} шт.`);
-    return;
-  }
-
-  const sale = sellFifo({
-    name,
-    quantity,
-    customPrice: customPrice === "" ? null : toNumber(customPrice)
+  const response = await apiPost("/api/sales/", {
+    name: form.get("name"),
+    quantity: toNumber(form.get("quantity")),
+    customPrice: form.get("customPrice")
   });
 
-  state.sales.unshift(sale);
-  removeEmptyBatches();
-  saveState();
+  if (!response.ok) return showHint(saleHint, response.error || "Продажа не оформлена.");
+
+  state = response.state;
   saleForm.reset();
   saleForm.quantity.value = 1;
-  showHint(saleHint, `Продажа оформлена. Прибыль: ${money(sale.profit)}.`, true);
+  showHint(saleHint, `Продажа оформлена. Прибыль: ${money(response.sale.profit)}.`, true);
   render();
 });
 
-deadForm.addEventListener("submit", (event) => {
+deadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(deadForm);
-  const name = form.get("name");
-  const quantity = toNumber(form.get("quantity"));
-  const reason = cleanName(form.get("reason")) || "Мертвые цветы";
+  const response = await apiPost("/api/writeoffs/", {
+    name: form.get("name"),
+    quantity: toNumber(form.get("quantity")),
+    reason: cleanName(form.get("reason"))
+  });
 
-  if (!name || quantity <= 0) return;
+  if (!response.ok) return showHint(deadHint, response.error || "Списание не оформлено.");
 
-  const available = getAvailable(name);
-  if (available < quantity) {
-    showHint(deadHint, `Недостаточно на складе: доступно ${available} шт.`);
-    return;
-  }
-
-  const writeoff = writeoffFifo({ name, quantity, reason });
-  state.writeoffs.unshift(writeoff);
-  removeEmptyBatches();
-  saveState();
+  state = response.state;
   deadForm.reset();
   deadForm.quantity.value = 1;
-  showHint(deadHint, `Списано в потери: ${money(writeoff.cost)}.`, true);
+  showHint(deadHint, `Списано в потери: ${money(response.writeoff.cost)}.`, true);
   render();
 });
 
-inventoryBody.addEventListener("click", (event) => {
+inventoryBody.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest("[data-delete-batch]");
   const writeoffButton = event.target.closest("[data-writeoff-batch]");
 
   if (writeoffButton) {
-    const batch = state.batches.find((item) => item.id === writeoffButton.dataset.writeoffBatch);
-    if (!batch) return;
-
-    batch.quantity -= 1;
-    state.writeoffs.unshift({
-      id: createId(),
-      name: batch.name,
-      quantity: 1,
-      cost: batch.cost,
-      reason: "Быстрое списание со склада",
-      createdAt: new Date().toISOString()
-    });
-    removeEmptyBatches();
-    saveState();
+    const response = await apiPost(`/api/batches/${writeoffButton.dataset.writeoffBatch}/quick-writeoff/`, {});
+    if (!response.ok) return showHint(deadHint, response.error || "Не удалось списать цветок.");
+    state = response.state;
     render();
     return;
   }
 
   if (!deleteButton) return;
 
-  state.batches = state.batches.filter((batch) => batch.id !== deleteButton.dataset.deleteBatch);
-  saveState();
+  const response = await apiDelete(`/api/batches/${deleteButton.dataset.deleteBatch}/`);
+  if (!response.ok) return showHint(deadHint, response.error || "Не удалось удалить пачку.");
+  state = response;
   render();
 });
 
-clearData.addEventListener("click", () => {
+clearData.addEventListener("click", async () => {
   const confirmed = confirm("Очистить весь склад, продажи и списания?");
   if (!confirmed) return;
 
-  state.batches = [];
-  state.sales = [];
-  state.writeoffs = [];
-  saveState();
+  const response = await apiPost("/api/clear/", {});
+  if (!response.ok) return;
+
+  state = response;
   saleHint.textContent = "";
   deadHint.textContent = "";
   render();
 });
 
-function sellFifo({ name, quantity, customPrice }) {
-  let remaining = quantity;
-  let costTotal = 0;
-  let revenueTotal = 0;
-  const usedBatches = [];
-
-  for (const batch of getFifoBatches(name)) {
-    if (remaining <= 0) break;
-
-    const take = Math.min(batch.quantity, remaining);
-    const price = customPrice ?? batch.retailPrice;
-
-    batch.quantity -= take;
-    remaining -= take;
-    costTotal += take * batch.cost;
-    revenueTotal += take * price;
-    usedBatches.push({
-      batchId: batch.id,
-      quantity: take,
-      cost: batch.cost,
-      price
-    });
+async function loadState() {
+  try {
+    const response = await fetch("/api/state/");
+    state = await response.json();
+    render();
+  } catch {
+    showHint(saleHint, "Не удалось загрузить данные с сервера.");
   }
-
-  return {
-    id: createId(),
-    name,
-    quantity,
-    revenue: revenueTotal,
-    cost: costTotal,
-    profit: revenueTotal - costTotal,
-    usedBatches,
-    createdAt: new Date().toISOString()
-  };
-}
-
-function writeoffFifo({ name, quantity, reason }) {
-  let remaining = quantity;
-  let costTotal = 0;
-  const usedBatches = [];
-
-  for (const batch of getFifoBatches(name)) {
-    if (remaining <= 0) break;
-
-    const take = Math.min(batch.quantity, remaining);
-    batch.quantity -= take;
-    remaining -= take;
-    costTotal += take * batch.cost;
-    usedBatches.push({
-      batchId: batch.id,
-      quantity: take,
-      cost: batch.cost
-    });
-  }
-
-  return {
-    id: createId(),
-    name,
-    quantity,
-    cost: costTotal,
-    reason,
-    usedBatches,
-    createdAt: new Date().toISOString()
-  };
 }
 
 function render() {
@@ -270,17 +171,11 @@ function renderPackPreview() {
 }
 
 function renderStats() {
-  const totalUnits = state.batches.reduce((sum, batch) => sum + batch.quantity, 0);
-  const stockCost = state.batches.reduce((sum, batch) => sum + batch.quantity * batch.cost, 0);
-  const revenue = state.sales.reduce((sum, sale) => sum + sale.revenue, 0);
-  const salesProfit = state.sales.reduce((sum, sale) => sum + sale.profit, 0);
-  const deadLoss = state.writeoffs.reduce((sum, item) => sum + item.cost, 0);
-
-  document.querySelector("#totalUnits").textContent = `${totalUnits} шт.`;
-  document.querySelector("#stockCost").textContent = money(stockCost);
-  document.querySelector("#revenue").textContent = money(revenue);
-  document.querySelector("#deadLoss").textContent = money(deadLoss);
-  document.querySelector("#profit").textContent = money(salesProfit - deadLoss);
+  document.querySelector("#totalUnits").textContent = `${state.stats.totalUnits} шт.`;
+  document.querySelector("#stockCost").textContent = money(state.stats.stockCost);
+  document.querySelector("#revenue").textContent = money(state.stats.revenue);
+  document.querySelector("#deadLoss").textContent = money(state.stats.deadLoss);
+  document.querySelector("#profit").textContent = money(state.stats.profit);
 }
 
 function renderFlowerOptions() {
@@ -340,7 +235,7 @@ function renderInventory() {
 
 function renderSales() {
   if (state.sales.length === 0) {
-    salesBody.innerHTML = `<tr class="empty-row"><td colspan="7">Продаж пока нет.</td></tr>`;
+    salesBody.innerHTML = `<tr class="empty-row"><td colspan="6">Продаж пока нет.</td></tr>`;
     return;
   }
 
@@ -373,40 +268,34 @@ function renderWriteoffs() {
   `).join("");
 }
 
-function getFifoBatches(name) {
-  return state.batches
-    .filter((batch) => batch.name === name && batch.quantity > 0)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+async function apiPost(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": getCookie("csrftoken")
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  return { ...data, ok: response.ok };
+}
+
+async function apiDelete(url) {
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "X-CSRFToken": getCookie("csrftoken")
+    }
+  });
+  const data = await response.json();
+  return { ...data, ok: response.ok };
 }
 
 function getAvailable(name) {
   return state.batches
     .filter((batch) => batch.name === name)
     .reduce((sum, batch) => sum + batch.quantity, 0);
-}
-
-function removeEmptyBatches() {
-  state.batches = state.batches.filter((batch) => batch.quantity > 0);
-}
-
-function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return { batches: [], sales: [], writeoffs: [] };
-
-  try {
-    const parsed = JSON.parse(saved);
-    return {
-      batches: Array.isArray(parsed.batches) ? parsed.batches : [],
-      sales: Array.isArray(parsed.sales) ? parsed.sales : [],
-      writeoffs: Array.isArray(parsed.writeoffs) ? parsed.writeoffs : []
-    };
-  } catch {
-    return { batches: [], sales: [], writeoffs: [] };
-  }
-}
-
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function cleanName(value) {
@@ -417,16 +306,8 @@ function toNumber(value) {
   return Number.parseFloat(value) || 0;
 }
 
-function createId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function money(value) {
-  return formatMoney.format(value);
+  return formatMoney.format(value || 0);
 }
 
 function date(value) {
@@ -436,6 +317,17 @@ function date(value) {
 function showHint(element, message, ok = false) {
   element.classList.toggle("ok", ok);
   element.textContent = message;
+}
+
+function getCookie(name) {
+  const cookies = document.cookie ? document.cookie.split(";") : [];
+  for (const cookie of cookies) {
+    const trimmed = cookie.trim();
+    if (trimmed.startsWith(`${name}=`)) {
+      return decodeURIComponent(trimmed.slice(name.length + 1));
+    }
+  }
+  return "";
 }
 
 function escapeHtml(value) {
