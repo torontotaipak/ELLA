@@ -3,7 +3,20 @@ from decimal import Decimal
 from django.db import models
 
 
+class Purchase(models.Model):
+    number = models.PositiveIntegerField(unique=True)
+    note = models.CharField(max_length=220, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"Закуп #{self.number}"
+
+
 class Batch(models.Model):
+    purchase = models.ForeignKey(Purchase, related_name="batches", null=True, blank=True, on_delete=models.PROTECT)
     name = models.CharField(max_length=160)
     pack_cost = models.DecimalField(max_digits=12, decimal_places=2)
     pack_quantity = models.PositiveIntegerField()
@@ -25,6 +38,14 @@ class Batch(models.Model):
 
 
 class Sale(models.Model):
+    SALE_SINGLE = "single"
+    SALE_BOUQUET = "bouquet"
+    SALE_TYPE_CHOICES = [
+        (SALE_SINGLE, "Одиночная продажа"),
+        (SALE_BOUQUET, "Букет"),
+    ]
+
+    sale_type = models.CharField(max_length=16, choices=SALE_TYPE_CHOICES, default=SALE_SINGLE)
     name = models.CharField(max_length=160)
     quantity = models.PositiveIntegerField()
     revenue = models.DecimalField(max_digits=12, decimal_places=2)

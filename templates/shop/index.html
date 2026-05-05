@@ -55,14 +55,31 @@
         {% endif %}
       </section>
 
-      <section class="workspace {% if request.user.is_staff %}three{% else %}worker-workspace{% endif %}">
+      <section class="workspace {% if request.user.is_staff %}purchase-workspace{% else %}worker-workspace{% endif %}">
         {% if request.user.is_staff %}
+        <form id="purchaseForm" class="panel">
+          <div class="panel-head">
+            <h2>Новая закупка</h2>
+            <p>Номер и дата закупки ставятся автоматически.</p>
+          </div>
+          <label>
+            Комментарий необязательно
+            <input name="note" type="text" placeholder="Например, поставщик или рынок">
+          </label>
+          <button type="submit" class="primary-btn">Создать закупку</button>
+          <p id="purchaseHint" class="hint"></p>
+        </form>
+
         <form id="batchForm" class="panel">
           {% csrf_token %}
           <div class="panel-head">
             <h2>Закупить пачку</h2>
             <p>Себестоимость 1 живого цветка считается автоматически.</p>
           </div>
+          <label>
+            Закупка
+            <select name="purchaseId" id="purchaseSelect"></select>
+          </label>
           <label>
             Название цветка
             <input name="name" type="text" placeholder="Например, Роза Red Naomi" required>
@@ -101,20 +118,49 @@
             <p>Сначала списываются самые старые живые цветы выбранного вида.</p>
           </div>
           <label>
-            Цветок
-            <select name="name" id="saleFlower" required></select>
+            Формат продажи
+            <select name="saleType" id="saleType">
+              <option value="single">Отдельные цветы</option>
+              <option value="bouquet">Букет</option>
+            </select>
           </label>
-          <div class="form-grid">
+          <div id="singleSaleFields">
             <label>
-              Количество
-              <input name="quantity" type="number" min="1" step="1" value="1" required>
+              Цветок
+              <select name="name" id="saleFlower"></select>
             </label>
-            <div class="readonly-note">Продажа только в розницу</div>
+            <div class="form-grid">
+              <label>
+                Количество
+                <input name="quantity" type="number" min="1" step="1" value="1">
+              </label>
+              <div class="readonly-note">Продажа только в розницу</div>
+            </div>
+            <label>
+              Своя цена за 1 шт. необязательно
+              <input name="customPrice" type="number" min="0" step="0.01" placeholder="Если нужна скидка">
+            </label>
           </div>
-          <label>
-            Своя цена за 1 шт. необязательно
-            <input name="customPrice" type="number" min="0" step="0.01" placeholder="Если нужна скидка">
-          </label>
+          <div id="bouquetSaleFields" class="is-hidden">
+            <label>
+              Название букета
+              <input name="bouquetName" type="text" placeholder="Например, Букет микс">
+            </label>
+            <label>
+              Цена букета
+              <input name="bouquetPrice" type="number" min="0" step="0.01" placeholder="15000">
+            </label>
+            <div id="bouquetItems" class="bouquet-items"></div>
+            <button type="button" id="addBouquetItem" class="ghost-btn">Добавить цветок в букет</button>
+            <div class="calculator bouquet-summary">
+              <span>Цветов в букете: <strong id="bouquetQtyPreview">0 шт.</strong></span>
+              <span>Цена букета: <strong id="bouquetPricePreview">0 ₸</strong></span>
+              {% if request.user.is_staff %}
+              <span>Себестоимость цветов: <strong id="bouquetCostPreview">0 ₸</strong></span>
+              <span>Прибыль букета: <strong id="bouquetProfitPreview">0 ₸</strong></span>
+              {% endif %}
+            </div>
+          </div>
           <button type="submit" class="primary-btn dark">Оформить продажу</button>
           <p id="saleHint" class="hint"></p>
         </form>
@@ -144,8 +190,8 @@
       <section class="table-section">
         <div class="section-head">
           <div>
-            <h2>Склад по пачкам</h2>
-            <p>Пачки отсортированы от старых к новым для FIFO.</p>
+            <h2>{% if request.user.is_staff %}Склад по закупкам{% else %}Склад{% endif %}</h2>
+            <p>{% if request.user.is_staff %}Закупки сгруппированы по номеру и дате.{% else %}Доступные остатки для продаж и списаний.{% endif %}</p>
           </div>
           {% if request.user.is_staff %}
             <button id="clearData" type="button" class="ghost-btn">Очистить учет</button>
