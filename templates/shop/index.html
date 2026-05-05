@@ -7,7 +7,7 @@
     <title>FIFO учет цветочного магазина</title>
     <link rel="stylesheet" href="{% static 'shop/styles.css' %}">
   </head>
-  <body>
+  <body data-can-manage="{{ request.user.is_staff|yesno:'true,false' }}">
     <main class="app-shell">
       <div class="topbar">
         <span>Вы вошли как <strong>{{ request.user.username }}</strong></span>
@@ -30,11 +30,12 @@
         </div>
       </section>
 
-      <section class="stats-grid" aria-label="Финансовые показатели">
+      <section class="stats-grid {% if not request.user.is_staff %}worker-stats{% endif %}" aria-label="Финансовые показатели">
         <article class="stat">
           <span>Живой остаток</span>
           <strong id="totalUnits">0 шт.</strong>
         </article>
+        {% if request.user.is_staff %}
         <article class="stat">
           <span>Себестоимость склада</span>
           <strong id="stockCost">0 ₸</strong>
@@ -51,9 +52,11 @@
           <span>Чистая прибыль</span>
           <strong id="profit">0 ₸</strong>
         </article>
+        {% endif %}
       </section>
 
-      <section class="workspace three">
+      <section class="workspace {% if request.user.is_staff %}three{% else %}worker-workspace{% endif %}">
+        {% if request.user.is_staff %}
         <form id="batchForm" class="panel">
           {% csrf_token %}
           <div class="panel-head">
@@ -90,6 +93,7 @@
           </div>
           <button type="submit" class="primary-btn">Добавить пачку на склад</button>
         </form>
+        {% endif %}
 
         <form id="saleForm" class="panel">
           <div class="panel-head">
@@ -143,7 +147,9 @@
             <h2>Склад по пачкам</h2>
             <p>Пачки отсортированы от старых к новым для FIFO.</p>
           </div>
-          <button id="clearData" type="button" class="ghost-btn">Очистить учет</button>
+          {% if request.user.is_staff %}
+            <button id="clearData" type="button" class="ghost-btn">Очистить учет</button>
+          {% endif %}
         </div>
         <div class="table-wrap">
           <table>
@@ -152,12 +158,14 @@
                 <th>Дата</th>
                 <th>Цветок</th>
                 <th>Живой остаток</th>
+                {% if request.user.is_staff %}
                 <th>Пачка</th>
                 <th>Мертвые</th>
                 <th>Себест. 1 шт.</th>
                 <th>Розница</th>
                 <th>Стоимость остатка</th>
                 <th>Действия</th>
+                {% endif %}
               </tr>
             </thead>
             <tbody id="inventoryBody"></tbody>
@@ -179,9 +187,11 @@
                 <th>Дата</th>
                 <th>Цветок</th>
                 <th>Кол-во</th>
+                {% if request.user.is_staff %}
                 <th>Выручка</th>
                 <th>Себестоимость</th>
                 <th>Прибыль</th>
+                {% endif %}
               </tr>
             </thead>
             <tbody id="salesBody"></tbody>
@@ -203,7 +213,9 @@
                 <th>Дата</th>
                 <th>Цветок</th>
                 <th>Кол-во</th>
+                {% if request.user.is_staff %}
                 <th>Потеря</th>
+                {% endif %}
                 <th>Причина</th>
               </tr>
             </thead>

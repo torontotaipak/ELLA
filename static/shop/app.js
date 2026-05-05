@@ -1,16 +1,14 @@
 let state = {
+  canManage: false,
   batches: [],
   sales: [],
   writeoffs: [],
   stats: {
-    totalUnits: 0,
-    stockCost: 0,
-    revenue: 0,
-    deadLoss: 0,
-    profit: 0
+    totalUnits: 0
   }
 };
 
+const canManage = document.body.dataset.canManage === "true";
 const batchForm = document.querySelector("#batchForm");
 const saleForm = document.querySelector("#saleForm");
 const deadForm = document.querySelector("#deadForm");
@@ -24,7 +22,8 @@ const writeoffsBody = document.querySelector("#writeoffsBody");
 const clearData = document.querySelector("#clearData");
 
 const packInputs = ["packCost", "packQuantity", "deadOnArrival", "retailPrice"]
-  .map((id) => document.querySelector(`#${id}`));
+  .map((id) => document.querySelector(`#${id}`))
+  .filter(Boolean);
 
 const formatMoney = new Intl.NumberFormat("ru-KZ", {
   style: "currency",
@@ -44,18 +43,17 @@ packInputs.forEach((input) => input.addEventListener("input", renderPackPreview)
 loadState();
 renderPackPreview();
 
-batchForm.addEventListener("submit", async (event) => {
+if (batchForm) batchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(batchForm);
-  const payload = {
+  const response = await apiPost("/api/batches/", {
     name: cleanName(form.get("name")),
     packCost: toNumber(form.get("packCost")),
     packQuantity: toNumber(form.get("packQuantity")),
     deadOnArrival: toNumber(form.get("deadOnArrival")),
     retailPrice: toNumber(form.get("retailPrice"))
-  };
+  });
 
-  const response = await apiPost("/api/batches/", payload);
   if (!response.ok) return showHint(saleHint, response.error || "Проверьте данные пачки.");
 
   state = response.state;
@@ -81,7 +79,10 @@ saleForm.addEventListener("submit", async (event) => {
   state = response.state;
   saleForm.reset();
   saleForm.quantity.value = 1;
-  showHint(saleHint, `Продажа оформлена. Прибыль: ${money(response.sale.profit)}.`, true);
+  const message = canManage
+    ? `Продажа оформлена. Прибыль: ${money(response.sale.profit)}.`
+    : "Продажа оформлена.";
+  showHint(saleHint, message, true);
   render();
 });
 
@@ -99,11 +100,16 @@ deadForm.addEventListener("submit", async (event) => {
   state = response.state;
   deadForm.reset();
   deadForm.quantity.value = 1;
-  showHint(deadHint, `Списано в потери: ${money(response.writeoff.cost)}.`, true);
+  const message = canManage
+    ? `Списано в потери: ${money(response.writeoff.cost)}.`
+    : "Списание оформлено.";
+  showHint(deadHint, message, true);
   render();
 });
 
 inventoryBody.addEventListener("click", async (event) => {
+  if (!canManage) return;
+
   const deleteButton = event.target.closest("[data-delete-batch]");
   const writeoffButton = event.target.closest("[data-writeoff-batch]");
 
@@ -123,7 +129,7 @@ inventoryBody.addEventListener("click", async (event) => {
   render();
 });
 
-clearData.addEventListener("click", async () => {
+if (clearData) clearData.addEventListener("click", async () => {
   const confirmed = confirm("Очистить весь склад, продажи и списания?");
   if (!confirmed) return;
 
@@ -157,6 +163,8 @@ function render() {
 }
 
 function renderPackPreview() {
+  if (!batchForm) return;
+
   const packCost = toNumber(document.querySelector("#packCost").value);
   const packQuantity = toNumber(document.querySelector("#packQuantity").value) || 1;
   const deadOnArrival = Math.min(toNumber(document.querySelector("#deadOnArrival").value), packQuantity);
@@ -172,11 +180,11 @@ function renderPackPreview() {
 }
 
 function renderStats() {
-  document.querySelector("#totalUnits").textContent = `${state.stats.totalUnits} шт.`;
-  document.querySelector("#stockCost").textContent = money(state.stats.stockCost);
-  document.querySelector("#revenue").textContent = money(state.stats.revenue);
-  document.querySelector("#deadLoss").textContent = money(state.stats.deadLoss);
-  document.querySelector("#profit").textContent = money(state.stats.profit);
+  setText("#totalUnits", `${state.stats.totalUnits} шт.`);
+  setText("#stockCost", money(state.stats.stockCost));
+  setText("#revenue", money(state.stats.revenue));
+  setText("#deadLoss", money(state.stats.deadLoss));
+  setText("#profit", money(state.stats.profit));
 }
 
 function renderFlowerOptions() {
@@ -210,7 +218,8 @@ function renderInventory() {
   const rows = [...state.batches].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
   if (rows.length === 0) {
-    inventoryBody.innerHTML = `<tr class="empty-row"><td colspan="9">Склад пуст. Добавьте первую пачку цветов.</td></tr>`;
+    const colspan = canManage ? 9 : 3;
+    inventoryBody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}">Склад пуст.</td></tr>`;
     return;
   }
 
@@ -219,24 +228,27 @@ function renderInventory() {
       <td>${date(batch.createdAt)}</td>
       <td><strong>${escapeHtml(batch.name)}</strong></td>
       <td><span class="pill">${batch.quantity} шт.</span></td>
-      <td>${money(batch.packCost)} / ${batch.packQuantity} шт.</td>
-      <td>${batch.deadOnArrival || 0} шт.</td>
-      <td>${money(batch.cost)}</td>
-      <td>${money(batch.retailPrice)}</td>
-      <td>${money(batch.quantity * batch.cost)}</td>
-      <td>
-        <div class="row-actions">
-          <button class="row-btn writeoff" type="button" data-writeoff-batch="${batch.id}" title="Списать 1 штуку">-1</button>
-          <button class="row-btn" type="button" data-delete-batch="${batch.id}" title="Удалить пачку">x</button>
-        </div>
-      </td>
+      ${canManage ? `
+        <td>${money(batch.packCost)} / ${batch.packQuantity} шт.</td>
+        <td>${batch.deadOnArrival || 0} шт.</td>
+        <td>${money(batch.cost)}</td>
+        <td>${money(batch.retailPrice)}</td>
+        <td>${money(batch.quantity * batch.cost)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="row-btn writeoff" type="button" data-writeoff-batch="${batch.id}" title="Списать 1 штуку">-1</button>
+            <button class="row-btn" type="button" data-delete-batch="${batch.id}" title="Удалить пачку">x</button>
+          </div>
+        </td>
+      ` : ""}
     </tr>
   `).join("");
 }
 
 function renderSales() {
   if (state.sales.length === 0) {
-    salesBody.innerHTML = `<tr class="empty-row"><td colspan="6">Продаж пока нет.</td></tr>`;
+    const colspan = canManage ? 6 : 3;
+    salesBody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}">Продаж пока нет.</td></tr>`;
     return;
   }
 
@@ -245,16 +257,19 @@ function renderSales() {
       <td>${date(sale.createdAt)}</td>
       <td><strong>${escapeHtml(sale.name)}</strong></td>
       <td>${sale.quantity} шт.</td>
-      <td>${money(sale.revenue)}</td>
-      <td>${money(sale.cost)}</td>
-      <td><strong>${money(sale.profit)}</strong></td>
+      ${canManage ? `
+        <td>${money(sale.revenue)}</td>
+        <td>${money(sale.cost)}</td>
+        <td><strong>${money(sale.profit)}</strong></td>
+      ` : ""}
     </tr>
   `).join("");
 }
 
 function renderWriteoffs() {
   if (state.writeoffs.length === 0) {
-    writeoffsBody.innerHTML = `<tr class="empty-row"><td colspan="5">Списаний пока нет.</td></tr>`;
+    const colspan = canManage ? 5 : 4;
+    writeoffsBody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}">Списаний пока нет.</td></tr>`;
     return;
   }
 
@@ -263,7 +278,7 @@ function renderWriteoffs() {
       <td>${date(item.createdAt)}</td>
       <td><strong>${escapeHtml(item.name)}</strong></td>
       <td>${item.quantity} шт.</td>
-      <td><strong>${money(item.cost)}</strong></td>
+      ${canManage ? `<td><strong>${money(item.cost)}</strong></td>` : ""}
       <td>${escapeHtml(item.reason)}</td>
     </tr>
   `).join("");
@@ -325,6 +340,11 @@ function date(value) {
 function showHint(element, message, ok = false) {
   element.classList.toggle("ok", ok);
   element.textContent = message;
+}
+
+function setText(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.textContent = value;
 }
 
 function getCookie(name) {

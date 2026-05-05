@@ -224,6 +224,14 @@ h2 {
   grid-template-columns: 1.25fr 1fr 1fr;
 }
 
+.workspace.worker-workspace {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stats-grid.worker-stats {
+  grid-template-columns: minmax(220px, 1fr);
+}
+
 .panel {
   padding: 22px;
 }
@@ -425,7 +433,8 @@ td {
 @media (max-width: 880px) {
   .hero,
   .workspace,
-  .workspace.three {
+  .workspace.three,
+  .workspace.worker-workspace {
     grid-template-columns: 1fr;
   }
 

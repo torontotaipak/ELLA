@@ -24,6 +24,17 @@ def api_login_required(view_func):
     return wrapped
 
 
+def api_staff_required(view_func):
+    def wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Нужно войти в аккаунт."}, status=401)
+        if not request.user.is_staff:
+            return JsonResponse({"error": "Недостаточно прав."}, status=403)
+        return view_func(request, *args, **kwargs)
+
+    return wrapped
+
+
 @ensure_csrf_cookie
 @login_required
 def index(request):
@@ -33,10 +44,10 @@ def index(request):
 @api_login_required
 @require_http_methods(["GET"])
 def state(request):
-    return JsonResponse(build_state())
+    return JsonResponse(build_state(request.user))
 
 
-@api_login_required
+@api_staff_required
 @require_POST
 @transaction.atomic
 def create_batch(request):
@@ -70,20 +81,20 @@ def create_batch(request):
             reason="Мертвые сразу в пачке",
         )
 
-    return JsonResponse({"batch": batch_json(batch), "state": build_state()}, status=201)
+    return JsonResponse({"batch": batch_json(batch), "state": build_state(request.user)}, status=201)
 
 
-@api_login_required
+@api_staff_required
 @require_http_methods(["DELETE"])
 @transaction.atomic
 def delete_batch(request, batch_id):
     batch = get_object_or_404(Batch.objects.select_for_update(), pk=batch_id)
     batch.quantity = 0
     batch.save(update_fields=["quantity"])
-    return JsonResponse(build_state())
+    return JsonResponse(build_state(request.user))
 
 
-@api_login_required
+@api_staff_required
 @require_POST
 @transaction.atomic
 def quick_writeoff(request, batch_id):
@@ -100,7 +111,7 @@ def quick_writeoff(request, batch_id):
         reason="Быстрое списание со склада",
     )
     WriteOffLine.objects.create(writeoff=writeoff, batch=batch, quantity=1, unit_cost=batch.unit_cost)
-    return JsonResponse({"writeoff": writeoff_json(writeoff), "state": build_state()})
+    return JsonResponse({"writeoff": writeoff_json(writeoff, request.user), "state": build_state(request.user)})
 
 
 @api_login_required
@@ -139,7 +150,7 @@ def create_sale(request):
     sale.revenue = money(revenue_total)
     sale.profit = money(revenue_total - cost_total)
     sale.save(update_fields=["cost", "revenue", "profit"])
-    return JsonResponse({"sale": sale_json(sale), "state": build_state()}, status=201)
+    return JsonResponse({"sale": sale_json(sale, request.user), "state": build_state(request.user)}, status=201)
 
 
 @api_login_required
@@ -172,10 +183,10 @@ def create_writeoff(request):
 
     writeoff.cost = money(cost_total)
     writeoff.save(update_fields=["cost"])
-    return JsonResponse({"writeoff": writeoff_json(writeoff), "state": build_state()}, status=201)
+    return JsonResponse({"writeoff": writeoff_json(writeoff, request.user), "state": build_state(request.user)}, status=201)
 
 
-@api_login_required
+@api_staff_required
 @require_POST
 @transaction.atomic
 def clear_data(request):
@@ -184,68 +195,83 @@ def clear_data(request):
     Sale.objects.all().delete()
     WriteOff.objects.all().delete()
     Batch.objects.all().delete()
-    return JsonResponse(build_state())
+    return JsonResponse(build_state(request.user))
 
 
-def build_state():
+def build_state(user):
+    can_manage = user.is_staff
     batches = list(Batch.objects.filter(quantity__gt=0))
     sales = list(Sale.objects.all()[:200])
     writeoffs = list(WriteOff.objects.all()[:200])
-    revenue = Sale.objects.aggregate(total=Sum("revenue"))["total"] or Decimal("0")
-    sales_profit = Sale.objects.aggregate(total=Sum("profit"))["total"] or Decimal("0")
-    dead_loss = WriteOff.objects.aggregate(total=Sum("cost"))["total"] or Decimal("0")
-    stock_cost = sum((batch.stock_cost for batch in batches), Decimal("0"))
     total_units = sum(batch.quantity for batch in batches)
+    stats = {"totalUnits": total_units}
 
-    return {
-        "batches": [batch_json(batch) for batch in batches],
-        "sales": [sale_json(sale) for sale in sales],
-        "writeoffs": [writeoff_json(item) for item in writeoffs],
-        "stats": {
-            "totalUnits": total_units,
+    if can_manage:
+        revenue = Sale.objects.aggregate(total=Sum("revenue"))["total"] or Decimal("0")
+        sales_profit = Sale.objects.aggregate(total=Sum("profit"))["total"] or Decimal("0")
+        dead_loss = WriteOff.objects.aggregate(total=Sum("cost"))["total"] or Decimal("0")
+        stock_cost = sum((batch.stock_cost for batch in batches), Decimal("0"))
+        stats.update({
             "stockCost": decimal_json(stock_cost),
             "revenue": decimal_json(revenue),
             "deadLoss": decimal_json(dead_loss),
             "profit": decimal_json(sales_profit - dead_loss),
-        },
+        })
+
+    return {
+        "canManage": can_manage,
+        "batches": [batch_json(batch, can_manage) for batch in batches],
+        "sales": [sale_json(sale, user) for sale in sales],
+        "writeoffs": [writeoff_json(item, user) for item in writeoffs],
+        "stats": stats,
     }
 
 
-def batch_json(batch):
-    return {
+def batch_json(batch, can_manage=True):
+    data = {
         "id": batch.id,
         "name": batch.name,
-        "packCost": decimal_json(batch.pack_cost),
-        "packQuantity": batch.pack_quantity,
-        "deadOnArrival": batch.dead_on_arrival,
         "quantity": batch.quantity,
-        "cost": decimal_json(batch.unit_cost),
-        "retailPrice": decimal_json(batch.retail_price),
         "createdAt": batch.created_at.isoformat(),
     }
+    if can_manage:
+        data.update({
+            "packCost": decimal_json(batch.pack_cost),
+            "packQuantity": batch.pack_quantity,
+            "deadOnArrival": batch.dead_on_arrival,
+            "cost": decimal_json(batch.unit_cost),
+            "retailPrice": decimal_json(batch.retail_price),
+        })
+    return data
 
 
-def sale_json(sale):
-    return {
+def sale_json(sale, user):
+    data = {
         "id": sale.id,
         "name": sale.name,
         "quantity": sale.quantity,
-        "revenue": decimal_json(sale.revenue),
-        "cost": decimal_json(sale.cost),
-        "profit": decimal_json(sale.profit),
         "createdAt": sale.created_at.isoformat(),
     }
+    if user.is_staff:
+        data.update({
+            "revenue": decimal_json(sale.revenue),
+            "cost": decimal_json(sale.cost),
+            "profit": decimal_json(sale.profit),
+        })
+    return data
 
 
-def writeoff_json(writeoff):
-    return {
+def writeoff_json(writeoff, user):
+    data = {
         "id": writeoff.id,
         "name": writeoff.name,
         "quantity": writeoff.quantity,
-        "cost": decimal_json(writeoff.cost),
         "reason": writeoff.reason,
         "createdAt": writeoff.created_at.isoformat(),
     }
+    if user.is_staff:
+        data["cost"] = decimal_json(writeoff.cost)
+    return data
 
 
 def fifo_batches(name):
