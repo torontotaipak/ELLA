@@ -2,7 +2,7 @@ services:
   - type: web
     name: ella-flower-shop
     env: python
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py ensure_admin
     startCommand: gunicorn ella.wsgi:application
     envVars:
       - key: DJANGO_DEBUG
@@ -15,6 +15,12 @@ services:
         fromDatabase:
           name: ella-flower-db
           property: connectionString
+      - key: DJANGO_ADMIN_USERNAME
+        sync: false
+      - key: DJANGO_ADMIN_PASSWORD
+        sync: false
+      - key: DJANGO_ADMIN_EMAIL
+        sync: false
 
 databases:
   - name: ella-flower-db

@@ -43,6 +43,20 @@ button {
   padding: 28px 0 40px;
 }
 
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.topbar form {
+  margin: 0;
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -56,6 +70,27 @@ button {
     linear-gradient(120deg, rgba(255, 255, 255, 0.92), rgba(255, 253, 250, 0.74)),
     radial-gradient(circle at 85% 20%, rgba(233, 185, 73, 0.28), transparent 32%);
   box-shadow: var(--shadow);
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-panel {
+  width: min(440px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+.login-panel h1 {
+  margin-bottom: 22px;
+  font-size: 34px;
 }
 
 .eyebrow {

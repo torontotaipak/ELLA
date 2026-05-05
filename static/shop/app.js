@@ -139,6 +139,7 @@ clearData.addEventListener("click", async () => {
 async function loadState() {
   try {
     const response = await fetch("/api/state/");
+    if (response.status === 401) return redirectToLogin();
     state = await response.json();
     render();
   } catch {
@@ -277,6 +278,7 @@ async function apiPost(url, payload) {
     },
     body: JSON.stringify(payload)
   });
+  if (response.status === 401) return redirectToLogin();
   const data = await response.json();
   return { ...data, ok: response.ok };
 }
@@ -288,8 +290,14 @@ async function apiDelete(url) {
       "X-CSRFToken": getCookie("csrftoken")
     }
   });
+  if (response.status === 401) return redirectToLogin();
   const data = await response.json();
   return { ...data, ok: response.ok };
+}
+
+function redirectToLogin() {
+  window.location.href = `/login/?next=${encodeURIComponent(window.location.pathname)}`;
+  return { ok: false, error: "Нужно войти в аккаунт." };
 }
 
 function getAvailable(name) {

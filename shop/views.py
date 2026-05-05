@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 
@@ -14,16 +15,28 @@ from .models import Batch, Sale, SaleLine, WriteOff, WriteOffLine
 MONEY = Decimal("0.01")
 
 
+def api_login_required(view_func):
+    def wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Нужно войти в аккаунт."}, status=401)
+        return view_func(request, *args, **kwargs)
+
+    return wrapped
+
+
 @ensure_csrf_cookie
+@login_required
 def index(request):
     return render(request, "shop/index.html")
 
 
+@api_login_required
 @require_http_methods(["GET"])
 def state(request):
     return JsonResponse(build_state())
 
 
+@api_login_required
 @require_POST
 @transaction.atomic
 def create_batch(request):
@@ -60,6 +73,7 @@ def create_batch(request):
     return JsonResponse({"batch": batch_json(batch), "state": build_state()}, status=201)
 
 
+@api_login_required
 @require_http_methods(["DELETE"])
 @transaction.atomic
 def delete_batch(request, batch_id):
@@ -69,6 +83,7 @@ def delete_batch(request, batch_id):
     return JsonResponse(build_state())
 
 
+@api_login_required
 @require_POST
 @transaction.atomic
 def quick_writeoff(request, batch_id):
@@ -88,6 +103,7 @@ def quick_writeoff(request, batch_id):
     return JsonResponse({"writeoff": writeoff_json(writeoff), "state": build_state()})
 
 
+@api_login_required
 @require_POST
 @transaction.atomic
 def create_sale(request):
@@ -126,6 +142,7 @@ def create_sale(request):
     return JsonResponse({"sale": sale_json(sale), "state": build_state()}, status=201)
 
 
+@api_login_required
 @require_POST
 @transaction.atomic
 def create_writeoff(request):
@@ -158,6 +175,7 @@ def create_writeoff(request):
     return JsonResponse({"writeoff": writeoff_json(writeoff), "state": build_state()}, status=201)
 
 
+@api_login_required
 @require_POST
 @transaction.atomic
 def clear_data(request):

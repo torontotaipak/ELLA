@@ -9,6 +9,13 @@
   </head>
   <body>
     <main class="app-shell">
+      <div class="topbar">
+        <span>Вы вошли как <strong>{{ request.user.username }}</strong></span>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="ghost-btn">Выйти</button>
+        </form>
+      </div>
       <section class="hero">
         <div>
           <p class="eyebrow">Цветочный магазин</p>

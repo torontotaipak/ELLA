@@ -1,0 +1,32 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Вход в учет ELLA</title>
+    <link rel="stylesheet" href="{% static 'shop/styles.css' %}">
+  </head>
+  <body>
+    <main class="login-shell">
+      <form method="post" class="login-panel">
+        {% csrf_token %}
+        <p class="eyebrow">ELLA</p>
+        <h1>Вход в учет цветов</h1>
+        {% if form.errors %}
+          <p class="hint">Неверный логин или пароль.</p>
+        {% endif %}
+        <label>
+          Логин
+          <input type="text" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label>
+          Пароль
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="primary-btn">Войти</button>
+      </form>
+    </main>
+  </body>
+</html>
