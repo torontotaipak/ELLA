@@ -1,1 +1,1 @@
-web: gunicorn ella.wsgi:application
+web: bash start.sh
